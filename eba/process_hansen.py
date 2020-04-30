@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import rasterio
 from rasterstats import zonal_stats
+import itertools
 
 ###
 
@@ -81,7 +82,7 @@ if not os.path.exists(path+"/cambodia_1kmgrid.geojson"):
 	driver_tiff = gdal.GetDriverByName("GTiff")
 	band_base = base.GetRasterBand(1).ReadAsArray()
 	fn_new = path+"/temp.tif"
-	for i in range(1, 18):
+	for i in range(1, 19):
 		ds_new = driver_tiff.CreateCopy(fn_new, base, strict=0)
 		band_new = band_base==i
 		ds_new.GetRasterBand(1).WriteArray(band_new)
@@ -97,27 +98,55 @@ if not os.path.exists(path+"/cambodia_1kmgrid.geojson"):
 
 ###
 
+grid = gpd.read_file(path+"/cambodia_1kmgrid.geojson")
+
 # add NDVI to 1km grid
 
-for i in range(1, 14):
-	ndvi = rasterio.open(path+"/ndvi/ndvi_"+str(i+1998)+"_landsat.tif")
+for i in range(1999, 2019):
+	ndvi = rasterio.open(path+"/ndvi/ndvi_"+str(i)+"_landsat.tif")
 	array = ndvi.read(1)
 	array[array<0] = -9999
 	affine = ndvi.transform
 	stats = zonal_stats(grid, array, affine=affine, stats=['mean'], nodata=-9999)
-	grid['ndvi'+str(i+1998)] = pd.DataFrame(stats)
+	grid['ndvi'+str(i)] = pd.DataFrame(stats) * 0.0001
+
+grid.to_file(path+"/cambodia_1kmgrid.geojson", driver="GeoJSON")
 
 
+###
 
+grid_slim = grid.dropna(axis=0, subset=['cell_id'])
+grid_slim = grid[grid.columns.drop(['left', 'top', 'right', 'bottom', 'geometry'])]
 
+names = ['id'] + ["pcttreecover" + str(i) for i in range(2000, 2018)] + ["ndvi" + str(i) for i in range(2000, 2018)]
+grid_slim = grid_slim[names]
 
+grid_slim.to_csv(path+"/cambodia_1kmgrid.csv", index=False)
 
+headers = [str(i) for i in range(2000, 2018)]
+tc_index = ['pcttreecover' in i for i in grid_slim.columns]
+ndvi_index = ['ndvi' in i for i in grid_slim.columns]
 
+# reshape panel from wide to long form
+with open(path+"/cambodia_1kmgrid.csv") as f, open(path+'/panel.csv', 'w') as f2:
+	# first line of the csv is variable names
+    a=f2.write('id,year,pcttreecover,ndvi\n')
+    # performing transformation one grid cell at a time
+    for i, line in enumerate(f):
+        if i != 0:
+            x = line.strip().split(',')
+            #cell, commune, province, plantation, concession, protected, distance = x[0:7]
+            cell = x[0]
+            pcttreecover = list(itertools.compress(x, tc_index))
+            ndvi = list(itertools.compress(x, ndvi_index))
+            for year, tc_out, ndvi_out in zip(headers, pcttreecover, ndvi):
+            	a=f2.write(','.join([cell, year, tc_out, ndvi_out])+'\n')
 
+panel = pd.read_csv(path+"/panel.csv")
 
-
-
-
+#panel.describe()
+panel.describe().apply(lambda s: s.apply(lambda x: format(x, 'g')))
+panel[["pcttreecover", "ndvi"]].corr()
 
 
 
