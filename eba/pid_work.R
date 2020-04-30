@@ -140,13 +140,6 @@ q <- q[!is.na(q$X), ]
 #sum(is.na(c$X))
 #sum(is.na(c$Y))
 
-r <- SpatialPoints(coords = q[, c("X", "Y")], proj4string = CRS("+init=epsg:32648"))
-geo_proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-t <- spTransform(r, geo_proj)
-
-q$X <- t@coords[, 1]
-q$Y <- t@coords[, 2]
-
 pid2008 <- q
 
 rm(list = setdiff(ls(), c("contract", "path", "pid2008")))
