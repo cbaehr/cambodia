@@ -2,6 +2,7 @@
 path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
 
 import geopandas as gpd
+import itertools
 import numpy as np
 import pandas as pd
 import rasterio
@@ -22,10 +23,13 @@ treatment = gpd.read_file(path+"/pid/pid2003-18.geojson")
 grid_geometry = [Point(xy) for xy in zip(empty_grid.longitude, empty_grid.latitude)]
 empty_grid_geo = gpd.GeoDataFrame(empty_grid['cell_id'], crs='epsg:4326', geometry=grid_geometry)
 
-activity_types = ["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education"]
+activity_types = ["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education", "other"]
 
 for i in activity_types:
-	treatment_temp = treatment[treatment.activity_type==i]
+	if i=="other":
+		treatment_temp = treatment[~treatment.activity_type.isin(["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education"])]
+	else:
+		treatment_temp = treatment[treatment.activity_type==i]
 	treatment_temp = gpd.sjoin(empty_grid_geo, treatment_temp[['end_year', 'geometry']], how='left', op='intersects')
 	treatment_temp = treatment_temp[['cell_id', 'end_year']]
 	treatment_temp['end_year'] = treatment_temp['end_year'].astype('Int64').astype('str')
@@ -34,7 +38,7 @@ for i in activity_types:
 	treatment_grid_temp = list(map(build, treatment_grid_temp))
 	treatment_grid_temp = pd.DataFrame(treatment_grid_temp)
 	treatment_grid_temp = treatment_grid_temp.fillna(0)
-	for j in range(2003, 2019):
+	for j in range(1999, 2019):
 		if str(j) not in treatment_grid_temp.columns:
 			treatment_grid_temp[str(j)] = 0
 	treatment_grid_temp = treatment_grid_temp.reindex(sorted(treatment_grid_temp.columns), axis=1)
@@ -43,7 +47,7 @@ for i in activity_types:
 	if '2019' in treatment_grid_temp.columns:
 		treatment_grid_temp.drop(labels='2019', axis=1, inplace=True)
 	treatment_grid_temp = treatment_grid_temp.apply(np.cumsum, axis=1)
-	treatment_grid_temp.columns = [i+str(j) for j in range(2003, 2019)]
+	treatment_grid_temp.columns = [i+str(j) for j in range(1999, 2019)]
 	if i=="Rural Transport":
 		treatment_grid = pd.concat([empty_grid.reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
 	else:
@@ -88,77 +92,73 @@ for i in range(1999, 2018):
 		precip_grid = pd.concat([precip_grid.reset_index(drop=True), precip_grid_temp.reset_index(drop=True)], axis=1)
 
 
+#########
+
+adm = gpd.read_file(path+"/gadm36_KHM_3.geojson")
+adm_grid = gpd.sjoin(empty_grid_geo, adm[["GID_1", "NAME_1", "GID_2", "NAME_2", "GID_3", "NAME_3", "geometry"]], how='left', op='intersects')
+#adm_grid.drop(["cell_id", "geometry", "index_right"], axis=1, inplace=True)
+
+grid = pd.concat([empty_grid.reset_index(drop=True), 
+					adm_grid.drop(["cell_id", "geometry", "index_right"], axis=1).reset_index(drop=True),
+					treatment_grid.drop(labels=["latitude", "longitude", "cell_id"], axis=1).reset_index(drop=True), 
+					ndvi_grid.drop(labels=["latitude", "longitude", "cell_id"], axis=1).reset_index(drop=True), 
+					temperature_grid.drop(labels=["latitude", "longitude", "cell_id"], axis=1).reset_index(drop=True),
+					precip_grid.drop(labels=["latitude", "longitude", "cell_id"], axis=1).reset_index(drop=True)], 
+					axis=1)
+
+for i in range(1999, 2019):
+	if "ndvi"+str(i) not in grid.columns:
+		grid["ndvi"+str(i)] = "NA"
+	if "temperature"+str(i) not in grid.columns:
+		grid["temperature"+str(i)] = "NA"
+	if "precip"+str(i) not in grid.columns:
+		grid["precip"+str(i)] = "NA"
 
 
+new_names = ["latitude", "longitude", "cell_id", "GID_1", "NAME_1", "GID_2", "NAME_2", "GID_3", "NAME_3"] + ["Rural Transport" + str(i) for i in range(1999, 2019)] + ["Irrigation" + str(i) for i in range(1999, 2019)] + ["Rural Domestic Water Supplies" + str(i) for i in range(1999, 2019)] + ["Urban transport" + str(i) for i in range(1999, 2019)] + ["Education" + str(i) for i in range(1999, 2019)] + ["other" + str(i) for i in range(1999, 2019)] + ["ndvi" + str(i) for i in range(1999, 2019)] + ["temperature" + str(i) for i in range(1999, 2019)] + ["precip" + str(i) for i in range(1999, 2019)]
 
+grid = grid[new_names]
 
+# grid.dropna(axis=0, subset=['cell_id'], inplace=True)
 
-
-#mask=gdf_mask[gdf_mask.continent=="Africa"]
-#treatment_grid.to_file("/Users/christianbaehr/Desktop/test.geojson", driver='GeoJSON')
-
-
-for i in range(1999, 2003):
-    full_grid['trt_'+str(i)] = 0
-    full_grid['trt1k_'+str(i)] = 0
-    full_grid['trt2k_'+str(i)] = 0
-    full_grid['trt3k_'+str(i)] = 0
-
-for i in list(range(1999, 2001))+[2018]:
-    full_grid['temp_'+str(i)] = 'NA'
-
-full_grid['precip_2018'] = 'NA'
-
-for i in range(2014, 2019):
-	full_grid['ntl_'+str(i)] = 'NA'
-
-# reorder columns in main dataset
-new_names = ['cell_id', 'commune', 'province', 'plantation', 'concession', 'protected_area', 'road_distance', 'bombings', 'burials', 'memorials', 'prisons'] + ['ndvi_' + str(i) for i in range(1999, 2019)] + ['trt_' + str(i) for i in range(1999, 2019)] + ['trt1k_' + str(i) for i in range(1999, 2019)] + ['trt2k_' + str(i) for i in range(1999, 2019)] + ['trt3k_' + str(i) for i in range(1999, 2019)] + ['temp_' + str(i) for i in range(1999, 2019)] + ['precip_' + str(i) for i in range(1999, 2019)] + ['ntl_' + str(i) for i in range(1999, 2019)]
-full_grid = full_grid[new_names]
-
-# drop observations with missing cell ID
-full_grid.dropna(axis=0, subset=['cell_id'], inplace=True)
-
-# write "pre panel" to csv file
-if overwrite:
-    full_grid.to_csv(out_dir+'/pre_panel.csv', index=False)
+grid.to_csv(path+'/pre_panel.csv', index=False)
 
 # identify column indices for each time-variant measure. Will need these indices for reshaping
 headers = [str(i) for i in range(1999, 2019)]
-ndvi_index = ['ndvi' in i for i in full_grid.columns]
-trt_index = ['trt' in i for i in full_grid.columns]
-trt1k_index = ['trt1k' in i for i in full_grid.columns]
-trt2k_index = ['trt2k' in i for i in full_grid.columns]
-trt3k_index = ['trt3k' in i for i in full_grid.columns]
-temp_index = ['temp' in i for i in full_grid.columns]
-precip_index = ['precip' in i for i in full_grid.columns]
-ntl_index = ['ntl' in i for i in full_grid.columns]
+trt_rural_transport_index = ["Rural Transport" in i for i in grid.columns]
+trt_irrigation_index = ["Irrigation" in i for i in grid.columns]
+trt_rural_water_index = ["Rural Domestic Water Supplies" in i for i in grid.columns]
+trt_urban_transport_index = ["Urban transport" in i for i in grid.columns]
+trt_education_index = ["Education" in i for i in grid.columns]
+trt_other_index = ["other" in i for i in grid.columns]
+ndvi_index = ["ndvi" in i for i in grid.columns]
+temperature_index = ['temperature' in i for i in grid.columns]
+precip_index = ['precip' in i for i in grid.columns]
 
-del full_grid
+#for name in dir():
+#	if not name.startswith('_') and name!="path" and name!="itertools":
+#		del globals()[name]
 
 # reshape panel from wide to long form
-with open(out_dir+'/pre_panel.csv') as f, open(out_dir+'/panel.csv', 'w') as f2:
+with open(path+"/pre_panel.csv") as f, open(path+"/panel.csv", "w") as f2:
 	# first line of the csv is variable names
-    a=f2.write('cell_id,year,commune,province,plantation,concession,protected_area,road_distance,bombings,burials,memorials,prisons,ndvi,trt,trt1k,trt2k,trt3k,temp,precip,ntl\n')
+    a=f2.write("latitude,longitude,cell_id,year,province_id,province_name,district_id,district_name,commune_id,commune_name,ndvi,trt_ruraltrans,trt_irrigation,trt_ruralwater,trt_urbantrans,trt_education,trt_other,temperature,precip\n")
     # performing transformation one grid cell at a time
     for i, line in enumerate(f):
         if i != 0:
             x = line.strip().split(',')
-            cell, commune, province, plantation, concession, protected, distance = x[0:7]
+            latitude, longitude, cell, province_id, province_name, district_id, district_name, commune_id, commune_name = x[0:9]
             ndvi = list(itertools.compress(x, ndvi_index))
-            trt = list(itertools.compress(x, trt_index))
-            trt1k = list(itertools.compress(x, trt1k_index))
-            trt2k = list(itertools.compress(x, trt2k_index))
-            trt3k = list(itertools.compress(x, trt3k_index))
-            temp = list(itertools.compress(x, temp_index))
+            trt_rural_trans = list(itertools.compress(x, trt_rural_transport_index))
+            trt_irrigation = list(itertools.compress(x, trt_irrigation_index))
+            trt_rural_water = list(itertools.compress(x, trt_rural_water_index))
+            trt_urban_trans = list(itertools.compress(x, trt_urban_transport_index))
+            trt_education = list(itertools.compress(x, trt_education_index))
+            trt_other = list(itertools.compress(x, trt_other_index))
+            temperature = list(itertools.compress(x, temperature_index))
             precip = list(itertools.compress(x, precip_index))
-            ntl = list(itertools.compress(x, ntl_index))
-            for year, ndvi_out, trt_out, trt1k_out, trt2k_out, trt3k_out, temp_out, precip_out, ntl_out in zip(headers, ndvi, trt, trt1k, trt2k, trt3k, temp, precip, ntl):
-                a=f2.write(','.join([cell, year, commune, province, plantation, concession, protected, distance, bombings, burials, memorials, prisons, ndvi_out, trt_out, trt1k_out, trt2k_out, trt3k_out, temp_out, precip_out, ntl_out])+'\n')
-
-
-
-
+            for year, ndvi_out, trt_rt_out, trt_ir_out, trt_rw_out, trt_ut_out, trt_ed_out, trt_ot_out, temp_out, precip_out in zip(headers, ndvi, trt_rural_trans, trt_irrigation, trt_rural_water, trt_urban_trans, trt_education, trt_other, temperature, precip):
+                a=f2.write(','.join([latitude, longitude, cell, year,province_id, province_name, district_id, district_name, commune_id, commune_name, ndvi_out, trt_rt_out, trt_ir_out, trt_rw_out, trt_ut_out, trt_ed_out, trt_ot_out, temp_out, precip_out])+'\n')
 
 
 
