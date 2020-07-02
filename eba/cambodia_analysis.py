@@ -1,51 +1,16 @@
 
-path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
-# path = "C:/Users/cbaehr/Desktop/test"
-# path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
+my_dir = '/sciclone/home20/cbaehr/cambodia/eba/inputData'
 
-import geopandas as gpd
 import fiona
 import itertools
+import math
 import numpy as np
-from osgeo import gdal
+from osgeo import gdal, gdalconst
 import pandas as pd
 import rasterio
-from rasterstats import zonal_stats
 from shapely.geometry import shape, Point
 from shapely.prepared import prep
 
-# build empty grid
-
-stepsize = 0.00026949999
-
-grid_extent = fiona.open(path+"/grid_extent.geojson")
-grid_feature = grid_extent[0]
-
-# extract geometry from boundary shapefile
-grid_shape = shape(grid_feature['geometry'])
-prep_feat = prep(grid_shape)
-
-grid_bounds = grid_shape.bounds
-
-lonmin = grid_bounds[0] + (stepsize/2)
-lonmax = grid_bounds[2] - (stepsize/2)
-latmin = grid_bounds[1] + (stepsize/2)
-latmax = grid_bounds[3] - (stepsize/2)
-
-coords = itertools.product(
-    np.arange(lonmin, lonmax, stepsize),
-    np.arange(latmin, latmax, stepsize))
-
-point_list = map(Point, coords)
-
-point_list_trimmed = filter(prep_feat.contains, point_list)
-df_list = [{'longitude': i.x, 'latitude': i.y} for i in point_list_trimmed]
-
-grid = pd.DataFrame(df_list)
-
-grid['cell_id'] = grid.index.values+1
-
-###############################################################
 
 def getValuesAtPoint(indir, rasterfileList, pos, lon, lat, cell_id):
     #gt(2) and gt(4) coefficients are zero, and the gt(1) is pixel width, and gt(5) is pixel height.
@@ -87,23 +52,30 @@ def getValuesAtPoint(indir, rasterfileList, pos, lon, lat, cell_id):
     del data, band
     return df
 
-###############################################################
-
-#grid = getValuesAtPoint(indir=working_dir, rasterfileList=['hansen_treecover'], pos=grid, lon='longitude', lat='latitude', cell_id='Unnamed: 0')
-grid = getValuesAtPoint(indir=path, rasterfileList=['Hansen_treecover2000_cambodia'], pos=grid, lon='longitude', lat='latitude', cell_id='cell_id')
-
-grid = grid[grid["Hansen_treecover2000_cambodia"]>50]
-
-grid['cell_id'] = grid.index.values+1
-
-grid = grid[["x", "y", "cell_id"]]
-grid.columns = ["longitude", "latitude", "cell_id"]
-
-grid.to_csv(path+'/empty_grid.csv', index=False)
+###
 
 
 
+grid = pd.read_csv(my_dir+'/empty_grid.csv')
 
+raster_list = ['Hansen_treecover2000_cambodia_adjusted'] + ['ndvi/'+str(i)+'_all' for i in range(1999, 2019)]
 
+grid = getValuesAtPoint(indir=my_dir, rasterfileList=raster_list, pos=grid, lon='longitude', lat='latitude', cell_id='Unnamed: 0')
+
+grid.columns = ['cell_id', 'latitude', 'longitude', 'hansen'] + ['ndvi'+str(i) for i in range(1999, 2019)]
+grid.to_csv(my_dir+'/full_grid.csv', index=False)
+
+grid.describe().to_csv(my_dir+'/summary_stats.csv')
+
+correlation_cols = ['hansen'] + ['ndvi'+str(i) for i in range(1999, 2019)]
+grid[correlation_cols].corr().to_csv(my_dir+'/correlation_matrix.csv')
+
+###
+
+grid = grid[grid['hansen'] > 0.5]
+
+grid.describe().to_csv(my_dir+'/summary_stats_forestsonly.csv')
+
+grid[correlation_cols].corr().to_csv(my_dir+'/correlation_matrix_forestsonly.csv')
 
 
