@@ -1,6 +1,6 @@
 
-# path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
-path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
+path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
+#path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
 
 import geopandas as gpd
 from osgeo import gdal, gdalconst
@@ -10,11 +10,12 @@ import rasterio
 from rasterstats import zonal_stats
 import itertools
 
+
 ### ALIGNMENT ###
 
 # realigning the Hansen treecover raster to the 2018 NDVI data
 #if not os.path.exists(path+"/treecover2000_cambodia_adjusted.tif"):
-match_filename = path+"/ndvi/ndvi_2003_landsat.tif"
+match_filename = path+"/ndvi/ndvi_landsat_2003.tif"
 match_ds = gdal.Open(match_filename, gdalconst.GA_ReadOnly)
 match_proj = match_ds.GetProjection()
 match_geotrans = match_ds.GetGeoTransform()
@@ -33,8 +34,8 @@ dst.SetGeoTransform(match_geotrans)
 dst.SetProjection(match_proj)
 # perform re-alignment and save to specified output dst
 gdal.ReprojectImage(src, dst, src_proj, match_proj, gdalconst.GRA_Bilinear)
+del dst
 
-##########
 
 ### BINARY CONVERSION ###
 
@@ -60,6 +61,7 @@ new_vals = base_vals > 0.25
 new.GetRasterBand(1).WriteArray(new_vals)
 del base, new
 
+
 ### AGGREGATE HANSEN TO 1KM GRID ###
 
 # can run locally
@@ -80,7 +82,7 @@ affine = treecover.transform
 grid = gpd.read_file(path+"/cambodia_template_1kmgrid.geojson")
 stats = zonal_stats(grid, array, affine=affine, stats=['mean'])
 grid['pcttreecover2000'] = pd.DataFrame(stats)
-#grid.to_file(path+"/cambodia_1kmgrid.geojson", driver="GeoJSON")
+
 base = gdal.Open(path+"/Hansen_lossyear_cambodia.tif")
 driver_tiff = gdal.GetDriverByName("GTiff")
 band_base = base.GetRasterBand(1).ReadAsArray()
@@ -98,11 +100,7 @@ for i in range(1, 19):
 	stats = zonal_stats(grid, array, affine=affine, stats=['mean'])
 	grid['pcttreecover'+str(i+2000)] = grid['pcttreecover'+str(i+1999)] - pd.DataFrame(stats)['mean']
 
-#grid.to_file(path+"/cambodia_1kmgrid.geojson", driver="GeoJSON")
-
 ###
-
-#grid = gpd.read_file(path+"/cambodia_1kmgrid.geojson")
 
 # add NDVI to 1km grid
 
@@ -116,113 +114,46 @@ for i in range(1999, 2019):
 
 grid.to_file(path+"/cambodia_1kmgrid.geojson", driver="GeoJSON")
 
+##########
+
+
+for i in range(2001, 2018):
+	#match_filename = path+"/ndvi/ndvi_landsat_2003.tif"
+	#match_ds = gdal.Open(match_filename, gdalconst.GA_ReadOnly)
+	#match_proj = match_ds.GetProjection()
+	#match_geotrans = match_ds.GetGeoTransform()
+	#wide = match_ds.RasterXSize
+	#high = match_ds.RasterYSize
+	src_filename = path+"/temperature/temp_"+str(i)+".tif"
+	src = gdal.Open(src_filename, gdalconst.GA_ReadOnly)
+	src_proj = src.GetProjection()
+	src_geotrans = src.GetGeoTransform()
+	dst_filename = path+"/temperature30m/temperature30m_"+str(i)+".tif"
+	dst = gdal.GetDriverByName("GTiff").Create(dst_filename, wide, high, 1, gdalconst.GDT_Float32)
+	dst.SetGeoTransform(match_geotrans)
+	dst.SetProjection(match_proj)
+	gdal.ReprojectImage(src, dst, src_proj, match_proj, gdalconst.GRA_Bilinear)
+	del dst
 
 ###
 
-grid = gpd.read_file(path+"/cambodia_1kmgrid.geojson")
-
-#grid_slim = grid[grid.columns.drop(['left', 'top', 'right', 'bottom', 'geometry'])]
-
-grid.reset_index(inplace=True)
-
-names = ['id', "geometry"] + ["pcttreecover" + str(i) for i in range(2000, 2018)] + ["ndvi" + str(i) for i in range(2000, 2018)]
-pre_panel = grid[names]
-
-pre_panel = pre_panel.dropna(axis=0, subset=['id'])
-
-#new_names = ["cell_id"] + ["pcttreecover"+str(i) for i in range(2000, 2018)] + ["ndvi"+str(i) for i in range(2000, 2018)]
-
-pre_panel.rename(columns={"id":"cell_id"}, inplace=True)
-
-##########
-
-adm = gpd.read_file(path+"/gadm36_KHM_3.geojson")
-
-test = gpd.sjoin(pre_panel, adm[['GID_1', 'NAME_1', 'NL_NAME_1', 'GID_2', 'NAME_2', 'GID_3', 'NAME_3', "geometry"]], how="left", op="intersects")
-
-
-
-path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
-
-grid = pd.read_csv(path+"/full_grid.csv")
-
-
-geometry = [Point(xy) for xy in zip(grid.longitude, grid.latitude)]
-crs = {'init': 'epsg:4326'}
-gdf = gpd.GeoDataFrame(grid['cell_id'], crs=crs, geometry=geometry)
-
-hansen = gpd.read_file(path+"/hansen_grid_1km.geojson")
-
-
-cols = ["pcttreecover" + str(i) for i in range(2000, 2018)] + ["geometry"]
-
-hansen_grid = gpd.sjoin(gdf, hansen[cols], how='left', op='intersects')
-
-new_cols = ["pcttreecover" + str(i) for i in range(2000, 2018)]
-
-full_grid = pd.concat([grid.reset_index(drop=True), hansen_grid[new_cols].reset_index(drop=True)], axis=1)
-
-full_grid.to_csv(path+"/full_grid2.csv", index=False)
-
-
-
-
-
-
 for i in range(1999, 2019):
-	ndvi = rasterio.open(path+"/ndvi/ndvi_"+str(i)+"_landsat.tif")
-	array = ndvi.read(1)
-	array[array<0] = -9999
-	affine = ndvi.transform
-	stats = zonal_stats(grid, array, affine=affine, stats=['mean'], nodata=-9999)
-	grid['ndvi'+str(i)] = pd.DataFrame(stats) * 0.0001
-
-
-
-
-
-
-##########
-
-pre_panel.to_file(path+"/pre_panel_hansen.geojson", driver="GeoJSON")
-
-
-
-
-##########
-
-#grid_slim["cell_id"] = grid_slim.index
-
-test=pd.wide_to_long(pre_panel, stubnames=["pcttreecover", "ndvi"], i="cell_id", j="year")
-
-test.reset_index(inplace=True)
-
-
-test = test[["id", "year", "pcttreecover", "ndvi", "geometry"]]
-
-test.to_file(path+"/panel_hansen.geojson", driver="GeoJSON")
-
-
-
-
-
-
-
-panel = pd.read_csv(path+"/panel_hansen.csv")
-
-#panel.describe()
-panel.describe().apply(lambda s: s.apply(lambda x: format(x, 'g')))
-panel[["pcttreecover", "ndvi"]].corr()
-
-
-
-
-
-
-
-
-
-
+	#match_filename = path+"/ndvi/ndvi_landsat_2003.tif"
+	#match_ds = gdal.Open(match_filename, gdalconst.GA_ReadOnly)
+	#match_proj = match_ds.GetProjection()
+	#match_geotrans = match_ds.GetGeoTransform()
+	#wide = match_ds.RasterXSize
+	#high = match_ds.RasterYSize
+	src_filename = path+"/precip/precip_"+str(i)+".tif"
+	src = gdal.Open(src_filename, gdalconst.GA_ReadOnly)
+	src_proj = src.GetProjection()
+	src_geotrans = src.GetGeoTransform()
+	dst_filename = path+"/precip30m/precip30m_"+str(i)+".tif"
+	dst = gdal.GetDriverByName("GTiff").Create(dst_filename, wide, high, 1, gdalconst.GDT_Float32)
+	dst.SetGeoTransform(match_geotrans)
+	dst.SetProjection(match_proj)
+	gdal.ReprojectImage(src, dst, src_proj, match_proj, gdalconst.GRA_Bilinear)
+	del dst
 
 
 

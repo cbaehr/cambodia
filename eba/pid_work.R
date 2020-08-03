@@ -486,25 +486,36 @@ f$end_year <- format(f$end_date, "%Y")
 #writeOGR(k, "/Users/christianbaehr/Desktop/pid_full.geojson", layer = "ProjectID", driver = "GeoJSON")
 write.csv(f, file = paste0(path, "/pid2003-18.csv"), row.names = F)
 
+###########
+
+pid <- read.csv(paste0(path, "/pid2003-18.csv"), stringsAsFactors = F)
+
+names(pid)
+pid$end_year
+
+pid$matchid <- paste0(pid$project_id, pid$village_id)
+
+count <- 0
+for(i in unique(pid$matchid)) {
+  idx <- which(pid$matchid==i)
+  
+  if(length(idx)>1) {
+    
+    row <- which.min(pid$end_year[idx])
+    no_row <- idx[-row]
+    pid <- pid[-no_row, ]
+    
+  }
+  #count <- count+1
+  #print(count)
+}
+
+sum(duplicated(pid$matchid))
 
 
+write.csv(pid, "/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid2003-18_trimmed.csv", row.names = F)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+hist(pid$end_year)
 
 
 
