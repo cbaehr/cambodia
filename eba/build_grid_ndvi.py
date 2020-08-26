@@ -1,24 +1,13 @@
 
-path="/sciclone/home20/cbaehr/cambodia/eba/inputData"
+path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
 
-
-import fiona
-import itertools
-import math
-import numpy as np
 import pandas as pd
-from shapely.geometry import shape, Point, MultiPoint, MultiPolygon
-from shapely.prepared import prep
-import csv
-import os
-from osgeo import gdal, ogr
-import sys
-import errno
-import geopandas
-from rasterio import features
-import re
-from affine import Affine
-from rasterstats.io import read_features
+
+grid = pd.read_csv("/Users/christianbaehr/Downloads/empty_grid.csv")
+grid = pd.read_csv(path+"/empty_grid.csv")
+
+
+
 
 def getValuesAtPoint(indir, rasterfileList, pos, lon, lat, cell_id):
     #gt(2) and gt(4) coefficients are zero, and the gt(1) is pixel width, and gt(5) is pixel height.
@@ -62,15 +51,24 @@ def getValuesAtPoint(indir, rasterfileList, pos, lon, lat, cell_id):
 
 ###
 
-empty_grid = pd.read_csv(path+"/empty_grid.csv")
+#rasters = ["temp_"+str(i)+".tif" for i in range(2001, 2018)]
+rasters = ["ndvi_landsat_2008_adjusted.tif"]
 
-rasters = os.listdir(path+"/ndvi")
+temp = getValuesAtPoint(indir=path+"/ndvi_adjusted", rasterfileList=rasters, grid)
 
-temp = getValuesAtPoint(indir=path+'/ndvi', rasterfileList=rasters, pos=empty_grid, lon='longitude', lat='latitude', cell_id='cell_id')
 
-full_grid = pd.concat([empty_grid['cell_id'].reset_index(drop=True), temp.drop(['cell_id','x','y'], axis=1).reset_index(drop=True)], axis=1)
+temp = getValuesAtPoint(indir=path+"/temperature", rasterfileList=rasters, pos=grid, lon="longitude", lat="latitude", cell_id="cell_id")
+temp = temp.drop(["cell_id", "x", "y"], axis=1)
 
-full_grid.to_csv(path+"/ndvi_grid.csv",index=False)
+grid = pd.concat([grid, temp.reset_index(drop=True)], axis=1)
+
+
+
+
+
+
+
+
 
 
 

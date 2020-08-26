@@ -47,8 +47,10 @@ replace temperature = . if temperature==0
 replace distance_to_city = . if distance_to_city==-9999
 replace distance_to_city = distance_to_city / 1000
 
-replace loss = "." if loss=="NA"
-destring loss, replace
+*replace loss = "." if loss=="NA"
+*destring loss, replace
+
+replace ndvi = ndvi/10000
 
 
 export delimited "$data/panel_formatted_hansen.csv", replace

@@ -10,6 +10,8 @@ global results "/Users/christianbaehr/Box Sync/cambodia/eba/results"
 
 use "$data/panel_formatted_hansen.dta", clear
 
+*tsset cell_id year
+
 *drop if trt_overall>10
 
 egen max_trt_overall = max(trt_overall), by(cell_id) 
@@ -21,23 +23,91 @@ rm "$results/summary_statistics.txt"
 
 gen temp = 1
 reghdfe treecover trt_overall, absorb(temp) cluster(commune_number year)
-outreg2 using "$results/main_models_hansen.doc", replace tex noni nocons addtext("Year FEs", N, "Grid cell FEs", N, "Climate Controls", N)
+outreg2 using "$results/main_models_hansen.doc", replace tex noni nocons addtext("Year FEs", N, "Grid cell FEs", N)
 
 reghdfe treecover trt_overall, absorb(year) cluster(commune_number year)
-outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", N, "Climate Controls", N)
+outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", N)
 
 reghdfe treecover trt_overall, absorb(year cell_id) cluster(commune_number year)
-outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y, "Climate Controls", N)
+outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
 
 reghdfe treecover trt_overall temperature precip, absorb(year cell_id) cluster(commune_number year)
-outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y, "Climate Controls", Y)
+outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
 
 reghdfe treecover trt_overall temperature precip land_concession protected_area, absorb(year cell_id) cluster(commune_number year)
-outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y, "Climate Controls", Y)
+outreg2 using "$results/main_models_hansen.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
 
 rm "$results/main_models_hansen.txt"
 
 ***
+
+reghdfe ndvi trt_overall, absorb(temp) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi.doc", replace tex noni nocons addtext("Year FEs", N, "Grid cell FEs", N)
+
+reghdfe ndvi trt_overall, absorb(year) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", N)
+
+reghdfe ndvi trt_overall, absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe ndvi trt_overall temperature precip, absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe ndvi trt_overall temperature precip land_concession protected_area, absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+rm "$results/main_models_ndvi.txt"
+
+******
+
+egen baseline_treecover = max(treecover), by(cell_id)
+*drop if baseline_treecover<0.25
+
+outreg2 if baseline_treecover>=0.25 & !missing(baseline_treecover) using "$results/summary_statistics_forested.doc", replace sum(log)
+
+reghdfe treecover trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(temp) cluster(commune_number year)
+outreg2 using "$results/main_models_hansen_forested.doc", replace tex noni nocons addtext("Year FEs", N, "Grid cell FEs", N)
+
+reghdfe treecover trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year) cluster(commune_number year)
+outreg2 using "$results/main_models_hansen_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", N)
+
+reghdfe treecover trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_hansen_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe treecover trt_overall temperature precip if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_hansen_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe treecover trt_overall temperature precip land_concession protected_area if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_hansen_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+rm "$results/main_models_hansen_forested.txt"
+
+***
+
+reghdfe ndvi trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(temp) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi_forested.doc", replace tex noni nocons addtext("Year FEs", N, "Grid cell FEs", N)
+
+reghdfe ndvi trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", N)
+
+reghdfe ndvi trt_overall if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe ndvi trt_overall temperature precip if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+reghdfe ndvi trt_overall temperature precip land_concession protected_area if baseline_treecover>=0.25 & !missing(baseline_treecover), absorb(year cell_id) cluster(commune_number year)
+outreg2 using "$results/main_models_ndvi_forested.doc", append tex noni nocons addtext("Year FEs", Y, "Grid cell FEs", Y)
+
+rm "$results/main_models_ndvi_forested.txt"
+
+
+
+
+
+
+
+*********
 
 reghdfe treecover trt_overall temperature precip if max_trt_overall<10, absorb(year cell_id) cluster(commune_number year)
 

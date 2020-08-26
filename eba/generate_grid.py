@@ -1,105 +1,92 @@
 
-path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
-# path = "C:/Users/cbaehr/Desktop/test"
-# path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
+#path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
+#path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
+path = "/Users/christianbaehr/Desktop"
 
-import geopandas as gpd
-import fiona
-import itertools
-import numpy as np
-from osgeo import gdal
+import os
 import pandas as pd
 import rasterio
-from rasterstats import zonal_stats
-from shapely.geometry import shape, Point
-from shapely.prepared import prep
 
-# build empty grid
+src = path+"/Hansen_treecover2000_trimmed.tif"
 
-stepsize = 0.00026949999
+treecover = rasterio.open(src, "r")
+treecover_array = treecover.read()
+treecover_vals = treecover.read(1)
 
-grid_extent = fiona.open(path+"/grid_extent.geojson")
-grid_feature = grid_extent[0]
+mask_src = path+"/Hansen_datamask_trimmed.tif"
+mask = rasterio.open(mask_src, "r")
+mask_vals = mask.read(1)
+treecover_vals[mask_vals!=1] = 255
 
-# extract geometry from boundary shapefile
-grid_shape = shape(grid_feature['geometry'])
-prep_feat = prep(grid_shape)
+###
 
-grid_bounds = grid_shape.bounds
+treecover2000 = (treecover_vals>25) * 1
+treecover2000[treecover_vals==255] = 255
 
-lonmin = grid_bounds[0] + (stepsize/2)
-lonmax = grid_bounds[2] - (stepsize/2)
-latmin = grid_bounds[1] + (stepsize/2)
-latmax = grid_bounds[3] - (stepsize/2)
+loss_src = path+"/Hansen_lossyear_trimmed.tif"
+loss = rasterio.open(loss_src, "r")
+loss_vals = loss.read(1)
+loss_vals[treecover_vals==255] = 255
 
-coords = itertools.product(
-    np.arange(lonmin, lonmax, stepsize),
-    np.arange(latmin, latmax, stepsize))
+tc_mask = ((treecover2000==0) & (loss_vals!=0))
+treecover2000[tc_mask] = 255
 
-point_list = map(Point, coords)
+treecover_dict = {}
+treecover_dict["treecover2000"] = treecover2000
 
-point_list_trimmed = filter(prep_feat.contains, point_list)
-df_list = [{'longitude': i.x, 'latitude': i.y} for i in point_list_trimmed]
+for i in range(1, 19):
+	temp = (loss_vals==i)*1
+	temp[treecover_vals==255] = 0
+	treecover_dict["treecover{0}".format(i+2000)] = treecover_dict["treecover{0}".format(i+1999)] - temp
 
-grid = pd.DataFrame(df_list)
+###
 
-grid['cell_id'] = grid.index.values+1
+count = 1
+with open(path+"/hansen_grid.csv", "w") as f:
+	a=f.write("cell_id,lon,lat,tc2000,tc2001,tc2002,tc2003,tc2004,tc2005,tc2006,tc2007,tc2008,tc2009,tc2010,tc2011,tc2012,tc2013,tc2014,tc2015,tc2016,tc2017,tc2018\n")
+	for i in range(treecover_array.shape[1]):
+		for j in range(treecover_array.shape[2]):
+			temp = treecover_vals[i, j]
+			if (temp!=255 and temp>25):
+				tc = [str(treecover_dict["treecover{0}".format(k+2000)][i,j]) for k in range(0, 19)]
+				x, y = treecover.xy(i, j)
+				out = [str(count)] + [str(x)] + [str(y)] + tc
+				a = f.write(",".join(out)+"\n")
+				count = count+1
 
-###############################################################
+###
 
-def getValuesAtPoint(indir, rasterfileList, pos, lon, lat, cell_id):
-    #gt(2) and gt(4) coefficients are zero, and the gt(1) is pixel width, and gt(5) is pixel height.
-    #The (gt(0),gt(3)) position is the top left corner of the top left pixel of the raster.
-    for i, rs in enumerate(rasterfileList):
-        presValues = []
-        gdata = gdal.Open('{}/{}.tif'.format(indir,rs))
-        gt = gdata.GetGeoTransform()
-        band = gdata.GetRasterBand(1)
-        nodata = band.GetNoDataValue()
-        x0, y0 , w , h = gt[0], gt[3], gt[1], gt[5]
-        data = band.ReadAsArray().astype(np.float)
-        params = data.shape
-        #free memory
-        del gdata
-        if i == 0:
-            #iterate through the points
-            for p in pos.iterrows():
-                x = int((p[1][lon] - x0)/w)
-                y = int((p[1][lat] - y0)/h)
-                if y < params[0] and x < params[1]:
-                    val = data[y,x]
-                else:
-                    val = -9999
-                presVAL = [p[1][cell_id], p[1][lon], p[1][lat], val]
-                presValues.append(presVAL)
-            df = pd.DataFrame(presValues, columns=['cell_id', 'x', 'y', rs])
-        else:
-            #iterate through the points
-            for p in pos.iterrows():
-                x = int((p[1][lon] - x0)/w)
-                y = int((p[1][lat] - y0)/h)
-                if y < params[0] and x < params[1]:
-                    val = data[y,x]
-                else:
-                    val = -9999
-                presValues.append(val)
-            df[rs] = pd.Series(presValues)
-    del data, band
-    return df
+grid = pd.read_csv(path+"/hansen_grid.csv")
+grid.drop(["lon", "lat"], axis=1).to_csv(path+"/hansen_grid.csv", index=False)
+grid[["cell_id", "lon", "lat"]].to_csv(path+"/empty_grid.csv", index=False)
 
-###############################################################
+del grid
 
-#grid = getValuesAtPoint(indir=working_dir, rasterfileList=['hansen_treecover'], pos=grid, lon='longitude', lat='latitude', cell_id='Unnamed: 0')
-grid = getValuesAtPoint(indir=path, rasterfileList=['Hansen_treecover2000_cambodia'], pos=grid, lon='longitude', lat='latitude', cell_id='cell_id')
+###
 
-grid = grid[grid["Hansen_treecover2000_cambodia"]>50]
+ndvi_dict = {}
 
-grid['cell_id'] = grid.index.values+1
+for i in range(1999, 2019):
+	ndvi = rasterio.open(path+"/ndvi_adjusted/ndvi_landsat_"+str(i)+"_adjusted_masked.tif", "r")
+	if i==1999:
+		ndvi_array=ndvi.read()
+	ndvi_dict["ndvi{0}".format(i)] = ndvi.read(1)
 
-grid = grid[["x", "y", "cell_id"]]
-grid.columns = ["longitude", "latitude", "cell_id"]
+count = 1
+with open(path+"/ndvi_grid.csv", "w") as f:
+	a=f.write("cell_id,ndvi1999,ndvi2000,ndvi2001,ndvi2002,ndvi2003,ndvi2004,ndvi2005,ndvi2006,ndvi2007,ndvi2008,ndvi2009,ndvi2010,ndvi2011,ndvi2012,ndvi2013,ndvi2014,ndvi2015,ndvi2016,ndvi2017,ndvi2018\n")
+	for i in range(ndvi_array.shape[1]):
+		for j in range(ndvi_array.shape[2]):
+			temp=treecover_vals[i, j]
+			if (temp!=255 and temp>25):
+				vals = [str(ndvi_dict["ndvi{0}".format(k)][i,j]) for k in range(1999, 2019)]
+				out = [str(count)] + vals
+				a = f.write(",".join(out)+"\n")
+				count = count+1
 
-grid.to_csv(path+'/empty_grid.csv', index=False)
+
+
+
 
 
 

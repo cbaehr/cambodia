@@ -1,5 +1,6 @@
 
 path = "/Users/christianbaehr/Box Sync/cambodia/eba/inputData"
+#path = "/sciclone/home20/cbaehr/cambodia/eba/inputData"
 
 import fiona
 import itertools
@@ -106,6 +107,8 @@ b = pd.DataFrame(a)
 b.columns = ["treecover2000"]
 grid = pd.concat([empty_grid.reset_index(drop=True), b], axis=1)
 
+#grid.to_file("/Users/christianbaehr/Downloads/test.geojson", driver="GeoJSON")
+
 #d = gpd.GeoDataFrame(c, geometry=c.geometry)
 #d.to_file("/Users/christianbaehr/Downloads/test.geojson", driver="GeoJSON")
 
@@ -118,12 +121,14 @@ loss_affine = loss.transform
 
 for i in range(1, 18):
 	loss_array_year = (loss_array==i) * 1
+	loss_array_year[array!=1] = 0
 	loss_array_year[mask_array==1] = -9999
 	#loss_affine = loss.transform
 	a = zonal_stats(empty_grid, loss_array_year, affine=loss_affine, stats=["mean"], nodata=-9999)
 	b = pd.DataFrame(a)
 	c = grid["treecover"+str(1999+i)] - b["mean"]
 	grid["treecover"+str(2000+i)] = c
+	grid[grid["treecover"+str(2000+i)]<0, "treecover"+str(2000+i)] = 0
 
 ##########
 
@@ -136,18 +141,29 @@ temp = temp.drop(["cell_id", "x", "y"], axis=1)
 grid = pd.concat([grid, temp.reset_index(drop=True)], axis=1)
 
 
+#rasters = ["temp_"+str(i)+".tif" for i in range(2001, 2018)]
+#temp = getValuesAtPoint(indir=path+"/temperature", rasterfileList=rasters, pos=grid, lon="longitude", lat="latitude", cell_id="cell_id")
+#temp = temp.drop(["cell_id", "x", "y"], axis=1)
+#grid = pd.concat([grid, temp.reset_index(drop=True)], axis=1)
+
+
 ##########
+
+#for i in range(1999, 2017):
+#	precip = rasterio.open(path+"/precip/precip_"+str(i)+".tif")
+#	precip_array = precip.read(1)
+#	precip_affine = precip.transform
+#	a = zonal_stats(empty_grid, precip_array, affine=precip_affine, stats=["mean"], nodata=-9999)
+#	b = pd.DataFrame(a)
+#	grid["precip"+str(i)] = b
 
 
 rasters = ["precip_"+str(i)+".tif" for i in range(1999, 2017)]
-
 temp = getValuesAtPoint(indir=path+"/precip", rasterfileList=rasters, pos=grid, lon="longitude", lat="latitude", cell_id="cell_id")
 temp = temp.drop(["cell_id", "x", "y"], axis=1)
-
 grid = pd.concat([grid, temp.reset_index(drop=True)], axis=1)
 
 ##########
-
 
 grid_geometry = [Point(xy) for xy in zip(empty_grid.longitude, empty_grid.latitude)]
 empty_grid_geo = gpd.GeoDataFrame(empty_grid['cell_id'], crs='epsg:4326', geometry=grid_geometry)
@@ -158,16 +174,21 @@ def build(year_str):
 
 #treatment = gpd.read_file(path+"/pid/pid2003-18.geojson")
 treatment = gpd.read_file(path+"/pid/pid2003-18_trimmed.geojson")
-
+treatment_geo = treatment
+#treatment = pd.read_csv(path+"/pid/pid2003-18_trimmed.csv", encoding= 'unicode_escape')
+#encoding= 'unicode_escape'
+#treatment_geometry = [Point(xy) for xy in zip(treatment.lon, treatment.lat)]
+#treatment_geo = gpd.GeoDataFrame(treatment, crs='epsg:4326', geometry=treatment_geometry)
 
 activity_types = ["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education", "other"]
 
 for i in activity_types:
 	if i=="other":
-		treatment_temp = treatment[~treatment.activity_type.isin(["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education"])]
+		treatment_temp = treatment_geo[~treatment_geo.activity_type.isin(["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education"])]
 	else:
-		treatment_temp = treatment[treatment.activity_type==i]
+		treatment_temp = treatment_geo[treatment_geo.activity_type==i].reset_index(drop=True)
 	treatment_temp = gpd.sjoin(empty_grid_geo, treatment_temp[['end_year', 'geometry']], how='left', op='intersects')
+	#treatment_temp = gpd.sjoin(empty_grid, treatment_temp[['end_year', 'geometry']], how='left', op='intersects')
 	treatment_temp = treatment_temp[['cell_id', 'end_year']]
 	treatment_temp['end_year'] = treatment_temp['end_year'].astype('Int64').astype('str')
 	treatment_grid_temp = treatment_temp.pivot_table(values='end_year', index='cell_id', aggfunc='|'.join)
@@ -194,7 +215,11 @@ for i in activity_types:
 
 treatment_grid.drop(["cell_id"], axis=1, inplace=True)
 
-grid = pd.concat([grid, treatment_grid], axis=1)
+grid = pd.concat([grid.reset_index(drop=True), treatment_grid.reset_index(drop=True)], axis=1)
+
+#grid.to_file("/Users/christianbaehr/Downloads/test.geojson")
+
+
 
 ##########
 
@@ -279,9 +304,6 @@ pa_grid_temp = grid["pa_activedate"]
 for i in range(1993, 1999):
 	pa_grid_temp[pa_grid_temp==str(i)] = "1999"
 
-def build(year):
-	return{str(year): 1}
-
 test = list(map(build, pa_grid_temp))
 
 pa_grid_temp = pd.DataFrame(test)
@@ -291,7 +313,6 @@ for i in range(1999, 2019):
 		pa_grid_temp[str(i)] = 0
 
 keep_cols = [str(i) for i in range(1999, 2019)]
-
 pa_grid_temp = pa_grid_temp[keep_cols]
 
 pa_grid_temp = pa_grid_temp.fillna(0)
@@ -302,7 +323,7 @@ pa_grid_temp.columns = ["protected_area_"+str(i) for i in range(1999, 2019)]
 
 grid.drop(labels="pa_activedate", axis=1, inplace=True)
 
-grid = pd.concat([grid.reset_index(drop=True), pa_grid_temp], axis=1)
+grid = pd.concat([grid.reset_index(drop=True), pa_grid_temp.reset_index(drop=True)], axis=1)
 
 #del pa_grid_temp, test
 
@@ -338,27 +359,19 @@ elc_grid_temp.columns = ["land_concession_"+str(i) for i in range(1999, 2019)]
 
 grid.drop(labels=["elc_active_date", "elc_change_date"], axis=1, inplace=True)
 
-grid = pd.concat([grid.reset_index(drop=True), elc_grid_temp], axis=1)
+grid = pd.concat([grid.reset_index(drop=True), elc_grid_temp.reset_index(drop=True)], axis=1)
 
 #del elc_grid_temp, test
 
 #########
 
 
-grid.to_csv(path+"/full_grid_hansen.csv", index=False)
-
-###
-
-#grid = pd.read_csv(path+"/full_grid_hansen.csv")
-
 temp = getValuesAtPoint(indir=path, rasterfileList=["distance_to_city.tif"], pos=grid, lon="longitude", lat="latitude", cell_id="cell_id")
-#temp = temp.drop(["cell_id", "x", "y"], axis=1)
-
-#grid["distance_to_city"] = temp["mrb_dist"]
 
 grid = pd.concat([grid, temp["distance_to_city"].reset_index(drop=True)], axis=1)
 
 ###
+
 
 multi_treatment = gpd.read_file(path+"/pid/pid2003-18_trimmed_multiring.geojson")
 #multi_treatment_temp = multi_treatment.sample(100)
@@ -394,24 +407,19 @@ for i in [1000, 2000, 3000, 4000, 5000]:
 	else:
 		treatment_grid = pd.concat([treatment_grid.reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
 
-grid = pd.concat([grid.reset_index(drop=True), treatment_grid.drop(["cell_id"], axis=1).reset_index(drop=True)], axis=1)
+treatment_grid.drop(labels=["cell_id"], axis=1, inplace=True)
 
-
-#for i in treatment_grid.columns:
-#	print(i)
-
-#treatment_temp.to_file("/Users/christianbaehr/Downloads/treatment_temp.geojson", driver="GeoJSON")
-#temp.to_file("/Users/christianbaehr/Downloads/temp.geojson", driver="GeoJSON")
+grid = pd.concat([grid.reset_index(drop=True), treatment_grid.reset_index(drop=True)], axis=1)
 
 ###
 
-for i in range(1, 18):
-	loss_array_year = (loss_array==i) * 1
-	loss_array_year[mask_array==1] = -9999
-	#loss_affine = loss.transform
-	a = zonal_stats(empty_grid, loss_array_year, affine=loss_affine, stats=["mean"], nodata=-9999)
-	b = pd.DataFrame(a)
-	grid["loss"+str(2000+i)] = b["mean"]
+#for i in range(1, 18):
+#	loss_array_year = (loss_array==i) * 1
+#	loss_array_year[mask_array==1] = -9999
+#	#loss_affine = loss.transform
+#	a = zonal_stats(empty_grid, loss_array_year, affine=loss_affine, stats=["mean"], nodata=-9999)
+#	b = pd.DataFrame(a)
+#	grid["loss"+str(2000+i)] = b["mean"]
 
 ###
 
@@ -436,46 +444,79 @@ if "nan" in treatment_grid_temp.columns:
 	treatment_grid_temp.drop(labels="nan", axis=1, inplace=True)
 treatment_grid_temp = treatment_grid_temp.apply(np.cumsum, axis=1)
 treatment_grid_temp.columns = ["treatment_roadsonly"+str(i) for i in range(1999, 2019)]
-treatment_grid = pd.concat([empty_grid[["cell_id"]].reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
+#treatment_grid = pd.concat([empty_grid[["cell_id"]].reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
 
-grid = pd.concat([grid.reset_index(drop=True), treatment_grid.drop(["cell_id"], axis=1).reset_index(drop=True)], axis=1)
+#grid = pd.concat([grid.reset_index(drop=True), treatment_grid.drop(["cell_id"], axis=1).reset_index(drop=True)], axis=1)
+
+grid = pd.concat([grid.reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
 
 ###
 
-treatment_roadsonly["mrb_dist"] = treatment_roadsonly["mrb_dist"].astype(int)
+
+for i in range(1999, 2019):
+	ndvi = rasterio.open(path+"/ndvi/ndvi_landsat_"+str(i)+".tif")
+	ndvi_array = ndvi.read(1)
+	ndvi_array[ndvi_array<0] = -9999
+	ndvi_affine = ndvi.transform
+	a = zonal_stats(empty_grid, ndvi_array, affine=ndvi_affine, stats=["mean"], nodata=-9999)
+	b = pd.DataFrame(a)
+	grid["ndvi"+str(i)] = b
+
+###
+
+# #treatment_roadsonly = gpd.read_file(path+"/pid/pid_roadsonly_multiring.geojson")
+# treatment_temp = gpd.sjoin(empty_grid_geo, treatment_roadsonly[['end_year', 'geometry']], how='left', op='intersects')
+# 
+# treatment_temp = treatment_temp[['cell_id', 'end_year']]
+# treatment_temp['end_year'] = treatment_temp['end_year'].astype('Int64').astype('str')
+# treatment_grid_temp = treatment_temp.pivot_table(values='end_year', index='cell_id', aggfunc='|'.join)
+# treatment_grid_temp = treatment_grid_temp['end_year'].tolist()
+# treatment_grid_temp = list(map(build, treatment_grid_temp))
+# treatment_grid_temp = pd.DataFrame(treatment_grid_temp)
+# 
+# 
+# for i in activity_types:
+#   if i=="other":
+#   treatment_temp = treatment[~treatment.activity_type.isin(["Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education"])]
+# else:
+#   treatment_temp = treatment[treatment.activity_type==i]
+# treatment_temp = gpd.sjoin(empty_grid_geo, treatment_temp[['end_year', 'geometry']], how='left', op='intersects')
+# treatment_temp = treatment_temp[['cell_id', 'end_year']]
+# treatment_temp['end_year'] = treatment_temp['end_year'].astype('Int64').astype('str')
+# treatment_grid_temp = treatment_temp.pivot_table(values='end_year', index='cell_id', aggfunc='|'.join)
+# treatment_grid_temp = treatment_grid_temp['end_year'].tolist()
+# treatment_grid_temp = list(map(build, treatment_grid_temp))
+# treatment_grid_temp = pd.DataFrame(treatment_grid_temp)
+# treatment_grid_temp = treatment_grid_temp.fillna(0)
+# for j in range(1999, 2019):
+#   if str(j) not in treatment_grid_temp.columns:
+#   treatment_grid_temp[str(j)] = 0
+# treatment_grid_temp = treatment_grid_temp.reindex(sorted(treatment_grid_temp.columns), axis=1)
+# if '<NA>' in treatment_grid_temp.columns:
+#   treatment_grid_temp.drop(labels='<NA>', axis=1, inplace=True)
+# if '2019' in treatment_grid_temp.columns:
+#   treatment_grid_temp.drop(labels='2019', axis=1, inplace=True)
+# if "nan" in treatment_grid_temp.columns:
+#   treatment_grid_temp.drop(labels="nan", axis=1, inplace=True)
+# treatment_grid_temp = treatment_grid_temp.apply(np.cumsum, axis=1)
+# treatment_grid_temp.columns = [i+str(j) for j in range(1999, 2019)]
+# if i=="Rural Transport":
+#   treatment_grid = pd.concat([empty_grid[["cell_id"]].reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
+# else:
+#   treatment_grid = pd.concat([treatment_grid.reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
+# 
+# treatment_grid.drop(["cell_id"], axis=1, inplace=True)
+# 
+# grid = pd.concat([grid, treatment_grid], axis=1)
 
 
-for i in [1000, 2000, 3000, 4000, 5000]:
-	temp = treatment_roadsonly.loc[treatment_roadsonly["mrb_dist"]==i]
-	treatment_temp = gpd.sjoin(empty_grid_geo, temp[['end_year', 'geometry']], how='left', op='intersects')
-	treatment_temp = treatment_temp[['cell_id', 'end_year']]
-	treatment_temp['end_year'] = treatment_temp['end_year'].astype('Int64').astype('str')
-	treatment_grid_temp = treatment_temp.pivot_table(values='end_year', index='cell_id', aggfunc='|'.join)
-	treatment_grid_temp = treatment_grid_temp['end_year'].tolist()
-	treatment_grid_temp = list(map(build, treatment_grid_temp))
-	treatment_grid_temp = pd.DataFrame(treatment_grid_temp)
-	treatment_grid_temp = treatment_grid_temp.fillna(0)
-	for j in range(1999, 2019):
-		if str(j) not in treatment_grid_temp.columns:
-			treatment_grid_temp[str(j)] = 0
-	treatment_grid_temp = treatment_grid_temp.reindex(sorted(treatment_grid_temp.columns), axis=1)
-	if '<NA>' in treatment_grid_temp.columns:
-		treatment_grid_temp.drop(labels='<NA>', axis=1, inplace=True)
-	if '2019' in treatment_grid_temp.columns:
-		treatment_grid_temp.drop(labels='2019', axis=1, inplace=True)
-	if "nan" in treatment_grid_temp.columns:
-		treatment_grid_temp.drop(labels="nan", axis=1, inplace=True)
-	treatment_grid_temp = treatment_grid_temp.apply(np.cumsum, axis=1)
-	treatment_grid_temp.columns = ["treatment_roadsonly"+str(i)+"_"+str(j) for j in range(1999, 2019)]
-	if i==1000:
-		treatment_grid = pd.concat([empty_grid[["cell_id"]].reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
-	else:
-		treatment_grid = pd.concat([treatment_grid.reset_index(drop=True), treatment_grid_temp.reset_index(drop=True)], axis=1)
+#########
+
+for i in grid.columns:
+	print(i)
 
 
-
-grid = pd.concat([grid.reset_index(drop=True), treatment_grid.drop(["cell_id"], axis=1).reset_index(drop=True)], axis=1)
-
+grid.to_csv(path+"/full_grid_hansen.csv", index=False)
 
 ##########
 
@@ -485,7 +526,7 @@ for i in grid.columns:
 
 names_order = ["cell_id", "longitude", "latitude", "GID_1", "NAME_1", "GID_2", "NAME_2", "GID_3", "NAME_3", "elc_adjustment", "plantation_type", "plantation_dummy", "distance_to_city"]
 
-for i in ["treecover", "Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education", "other", "protected_area_", "land_concession_", "precip_", "temp_", "treatment1000_", "treatment2000_", "treatment3000_", "treatment4000_", "treatment5000_", "loss", "treatment_roadsonly", "treatment_roadsonly1000_", "treatment_roadsonly2000_", "treatment_roadsonly3000_", "treatment_roadsonly4000_", "treatment_roadsonly5000_"]:
+for i in ["treecover", "Rural Transport", "Irrigation", "Rural Domestic Water Supplies", "Urban transport", "Education", "other", "protected_area_", "land_concession_", "precip_", "temp_", "treatment1000_", "treatment2000_", "treatment3000_", "treatment4000_", "treatment5000_", "treatment_roadsonly", "ndvi"]:
 	for j in range(1999, 2019):
 		names_order = names_order + [i+str(j)]
 		if i+str(j) not in grid.columns:
@@ -494,7 +535,7 @@ grid = grid[names_order]
 
 
 new_names = ["cell_id", "longitude", "latitude", "province_number", "province_name", "district_number", "district_name", "commune_number", "commune_name", "elc_adjustment", "plantation_type", "plantation_dummy", "distance_to_city"]
-for i in ["treecover", "trt_rural_transport", "trt_irrigation", "trt_rural_domestic_water_supply", "trt_urban_transport", "trt_education", "trt_other", "protected_area", "land_concession", "precip", "temperature", "trt1km", "trt2km", "trt3km", "trt4km", "trt5km", "loss", "treatment_roadsonly", "treatment_roadsonly1000_", "treatment_roadsonly2000_", "treatment_roadsonly3000_", "treatment_roadsonly4000_", "treatment_roadsonly5000_"]:
+for i in ["treecover", "trt_rural_transport", "trt_irrigation", "trt_rural_domestic_water_supply", "trt_urban_transport", "trt_education", "trt_other", "protected_area", "land_concession", "precip", "temperature", "trt_1km", "trt_2km", "trt_3km", "trt_4km", "trt_5km", "trt_roadsonly", "ndvi"]:
 	for j in range(1999, 2019):
 		new_names = new_names + [i+str(j)]
 names_dict = {}
@@ -504,13 +545,12 @@ grid.rename(columns=names_dict, inplace=True)
 
 grid.dropna(axis=0, subset=["cell_id"], inplace=True)
 
-grid.to_csv(path+"/pre_panel_hansen.csv", index=False)
+grid.to_csv(path+"/pre_panel_hansen.csv", index=False, encoding="utf-8")
 
 
 
 headers = [str(i) for i in range(1999, 2019)]
 treecover_idx = ["treecover" in i for i in grid.columns]
-#ndvi_idx = ["ndvi" in i for i in grid.columns]
 trt_rural_transport_idx = ["trt_rural_transport" in i for i in grid.columns]
 trt_irrigation_idx = ["trt_irrigation" in i for i in grid.columns]
 trt_rural_domestic_water_supply_idx = ["trt_rural_domestic_water_supply" in i for i in grid.columns]
@@ -518,34 +558,28 @@ trt_urban_transport_idx = ["trt_urban_transport" in i for i in grid.columns]
 trt_education_idx = ["trt_education" in i for i in grid.columns]
 trt_other_idx = ["trt_other" in i for i in grid.columns]
 precip_idx = ["precip" in i for i in grid.columns]
-temperature_idx = ["temperature" in i for i in grid.columns]
+temperature_idx = ["temp" in i for i in grid.columns]
 protected_area_idx = ["protected_area" in i for i in grid.columns]
 land_concession_idx = ["land_concession" in i for i in grid.columns]
-trt1km_idx = ["trt1km" in i for i in grid.columns]
-trt2km_idx = ["trt2km" in i for i in grid.columns]
-trt3km_idx = ["trt3km" in i for i in grid.columns]
-trt4km_idx = ["trt4km" in i for i in grid.columns]
-trt5km_idx = ["trt5km" in i for i in grid.columns]
-loss_idx = ["loss" in i for i in grid.columns]
-roadsonly_idx = ["treatment_roadsonly" in i for i in grid.columns]
-roadsonly1km_idx = ["treatment_roadsonly1000" in i for i in grid.columns]
-roadsonly2km_idx = ["treatment_roadsonly2000" in i for i in grid.columns]
-roadsonly3km_idx = ["treatment_roadsonly3000" in i for i in grid.columns]
-roadsonly4km_idx = ["treatment_roadsonly4000" in i for i in grid.columns]
-roadsonly5km_idx = ["treatment_roadsonly5000" in i for i in grid.columns]
+trt_1km_idx = ["trt_1km" in i for i in grid.columns]
+trt_2km_idx = ["trt_2km" in i for i in grid.columns]
+trt_3km_idx = ["trt_3km" in i for i in grid.columns]
+trt_4km_idx = ["trt_4km" in i for i in grid.columns]
+trt_5km_idx = ["trt_5km" in i for i in grid.columns]
+trt_roads_idx = ["trt_roadsonly" in i for i in grid.columns]
+ndvi_idx = ["ndvi" in i for i in grid.columns]
 
 
 del grid
 
 
 with open(path+"/pre_panel_hansen.csv") as f, open(path+"/panel_hansen.csv", "w") as f2:
-	a=f2.write("cell_id,year,longitude,latitude,province_number,province_name,district_number,district_name,commune_number,commune_name,elc_adjustment,plantation_type,plantation_dummy,distance_to_city,treecover,trt_rural_transport,trt_irrigation,trt_rural_domestic_water_supply,trt_urban_transport,trt_education,trt_other,precip,temperature,protected_area,land_concession,trt1km,trt2km,trt3km,trt4km,trt5km,loss,trt_roadsonly,trt_roadsonly1km,trt_roadsonly2km,trt_roadsonly3km,trt_roadsonly4km,trt_roadsonly5km\n")
+	a=f2.write("cell_id,year,longitude,latitude,province_number,province_name,district_number,district_name,commune_number,commune_name,elc_adjustment,plantation_type,plantation_dummy,distance_to_city,treecover,trt_rural_transport,trt_irrigation,trt_rural_domestic_water_supply,trt_urban_transport,trt_education,trt_other,precip,temperature,protected_area,land_concession,trt_1km,trt_2km,trt_3km,trt_4km,trt_5km,ndvi\n")
 	for i, line in enumerate(f):
 		if i>0:
 			x = line.strip().split(",")
 			cell, longitude, latitude, province_number, province_name, district_number, district_name, commune_number, commune_name, elc_adjustment, plantation_type, plantation_dummy, distance_to_city = x[0:13]
 			treecover = list(itertools.compress(x, treecover_idx))
-			#ndvi = list(itertools.compress(x, ndvi_idx))
 			trt1 = list(itertools.compress(x, trt_rural_transport_idx))
 			trt2 = list(itertools.compress(x, trt_irrigation_idx))
 			trt3 = list(itertools.compress(x, trt_rural_domestic_water_supply_idx))
@@ -556,33 +590,14 @@ with open(path+"/pre_panel_hansen.csv") as f, open(path+"/panel_hansen.csv", "w"
 			temperature = list(itertools.compress(x, temperature_idx))
 			protected_area = list(itertools.compress(x, protected_area_idx))
 			land_concession = list(itertools.compress(x, land_concession_idx))
-			trt1km = list(itertools.compress(x, trt1km_idx))
-			trt2km = list(itertools.compress(x, trt2km_idx))
-			trt3km = list(itertools.compress(x, trt3km_idx))
-			trt4km = list(itertools.compress(x, trt4km_idx))
-			trt5km = list(itertools.compress(x, trt5km_idx))
-			loss = list(itertools.compress(x, loss_idx))
-			roadsonly = list(itertools.compress(x, roadsonly_idx))
-			roadsonly1km = list(itertools.compress(x, roadsonly1km_idx))
-			roadsonly2km = list(itertools.compress(x, roadsonly2km_idx))
-			roadsonly3km = list(itertools.compress(x, roadsonly3km_idx))
-			roadsonly4km = list(itertools.compress(x, roadsonly4km_idx))
-			roadsonly5km = list(itertools.compress(x, roadsonly5km_idx))
-			for year, tc_out, trt1_out, trt2_out, trt3_out, trt4_out, trt5_out, trt6_out, precip_out, temperature_out, pa_out, lc_out, trt1km_out, trt2km_out, trt3km_out, trt4km_out, trt5km_out, loss_out, roadsonly_out, roadsonly1km_out, roadsonly2km_out, roadsonly3km_out, roadsonly4km_out, roadsonly5km_out in zip(headers, treecover, trt1, trt2, trt3, trt4, trt5, trt6, precip, temperature, protected_area, land_concession, trt1km, trt2km, trt3km, trt4km, trt5km, loss, roadsonly, roadsonly1km, roadsonly2km, roadsonly3km, roadsonly4km, roadsonly5km):
-				a=f2.write(",".join([cell, year, longitude, latitude, province_number, province_name, district_number, district_name, commune_number, commune_name, elc_adjustment, plantation_type, plantation_dummy, distance_to_city, tc_out, trt1_out, trt2_out, trt3_out, trt4_out, trt5_out, trt6_out, precip_out, temperature_out, pa_out, lc_out, trt1km_out, trt2km_out, trt3km_out, trt4km_out, trt5km_out, loss_out, roadsonly_out, roadsonly1km_out, roadsonly2km_out, roadsonly3km_out, roadsonly4km_out, roadsonly5km_out])+'\n')
-
-
-
-
-
-
-
-
-
-
-
-
-
+			trt1km = list(itertools.compress(x, trt_1km_idx))
+			trt2km = list(itertools.compress(x, trt_2km_idx))
+			trt3km = list(itertools.compress(x, trt_3km_idx))
+			trt4km = list(itertools.compress(x, trt_4km_idx))
+			trt5km = list(itertools.compress(x, trt_5km_idx))
+			ndvi = list(itertools.compress(x, ndvi_idx))
+			for year, tc_out, trt1_out, trt2_out, trt3_out, trt4_out, trt5_out, trt6_out, precip_out, temperature_out, pa_out, lc_out, trt1km_out, trt2km_out, trt3km_out, trt4km_out, trt5km_out, ndvi_out in zip(headers, treecover, trt1, trt2, trt3, trt4, trt5, trt6, precip, temperature, protected_area, land_concession, trt1km, trt2km, trt3km, trt4km, trt5km, ndvi):
+				a=f2.write(",".join([cell, year, longitude, latitude, province_number, province_name, district_number, district_name, commune_number, commune_name, elc_adjustment, plantation_type, plantation_dummy, distance_to_city, tc_out, trt1_out, trt2_out, trt3_out, trt4_out, trt5_out, trt6_out, precip_out, temperature_out, pa_out, lc_out, trt1km_out, trt2km_out, trt3km_out, trt4km_out, trt5km_out, ndvi_out])+'\n')
 
 
 

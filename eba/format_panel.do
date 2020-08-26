@@ -1,8 +1,8 @@
 
-*global data "/sciclone/home20/cbaehr/cambodia/eba/inputData"
-global data "/Users/christianbaehr/Downloads"
+global data "/sciclone/home20/cbaehr/cambodia/eba/inputData"
+*global data "/Users/christianbaehr/Downloads"
 
-import delimited "$data/panel_test.csv", clear
+import delimited "$data/panel.csv", clear
 
 *levelsof province_number
 egen temp = group(province_number)
