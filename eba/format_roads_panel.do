@@ -1,8 +1,17 @@
 
-global data "/sciclone/home20/cbaehr/cambodia/eba/inputData"
+
+
+*global data "/sciclone/home20/cbaehr/cambodia/eba/inputData"
+global data "/sciclone/scr20/cbaehr"
 *global data "/Users/christianbaehr/Downloads"
 
-import delimited "$data/panel_new.csv", clear
+import delimited "$data/panel_corrected_roads.csv", clear
+
+gen trt_roads_overall = trt1km_roads + trt2km_roads + trt3km_roads + trt4km_roads + trt5km_roads
+
+egen max_trt_overall = max(trt_roads_overall), by(cell_id)
+drop if max_trt_overall==0
+drop max_trt_overall
 
 *levelsof province_number
 egen temp = group(province_number)
@@ -25,22 +34,8 @@ replace commune_number = temp
 destring commune_number, replace
 drop temp
 
-replace protected_area = "1" if protected_area=="True"
-replace protected_area = "0" if protected_area=="False"
-destring protected_area, replace
-
-replace plantation = "1" if plantation=="True"
-replace plantation = "0" if plantation=="False"
-destring plantation, replace
-
-replace concession = "1" if concession=="True"
-replace concession = "0" if concession=="False"
-destring concession, replace
-
-gen trt_overall = trt1km + trt2km + trt3km + trt4km + trt5km
-
-replace distance_to_city = distance_to_city/1000
-replace distance_to_road = distance_to_road/1000
+replace dist_to_city = dist_to_city/1000
+replace dist_to_road = dist_to_road/1000
 
 replace ndvi = . if ndvi==-9999
 replace ndvi = ndvi*0.0001
@@ -56,18 +51,8 @@ replace temperature = . if temperature==0
 
 drop longitude latitude
 
-save "$data/panel_formatted.dta", replace
+save "$data/panel_corrected_roads_formatted.dta", replace
+*export delimited "$data/panel_irrigation_formatted.csv", replace
 
 su
-
-replace treecover="." if treecover=="NA"
-destring treecover, replace
-
-su
-
-save "$data/panel_formatted.dta", replace
-
-
-
-
 

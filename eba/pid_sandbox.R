@@ -48,7 +48,62 @@ summary(km$quantity)
 bridges <- rural_transport[which(rural_transport$unit=="Bridges"), ]
 unique(bridges$activity_desc_long)
 
-write.csv(km, "/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid_roadsonly.csv", row.names = F)
+#write.csv(km, "/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid_roadsonly.csv", row.names = F)
+
+#####
+
+library(sf)
+
+pid <- st_read("/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid2003-18_trimmed_multiring.geojson",
+               stringsAsFactors=F)
+rural_transport <- pid[which(pid$activity_type=="Rural Transport"), ]
+# rural_transport <- rural_transport[!grepl("routine maintenance", tolower(rural_transport$activity_desc_long)), ]
+# 
+# activities <- c("wood bridge",
+#                 "earth road",
+#                 "sand road",
+#                 "laterite road",
+#                 "concrete bridge",
+#                 "gravel road",
+#                 "concrete road",
+#                 "stone road",
+#                 "earth dam",
+#                 "wood bridge",
+#                 "bailey bridge",
+#                 "bitumen road")
+# 
+# activities <- paste(activities, collapse = "|")
+# 
+# rural_transport <- rural_transport[grepl(activities, tolower(rural_transport$activity_desc_long)), ]
+# rural_transport <- rural_transport[!grepl("repeated service", tolower(rural_transport$activity_desc_long)), ]
+
+st_write(obj=rural_transport, 
+         dsn="/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid_roadsandbridges.geojson",
+         driver = "GeoJSON",
+         delete_dsn = TRUE)
+
+########
+
+rm(list = setdiff(ls(), "pid"))
+
+# pid <- st_read("/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid2003-18_trimmed_multiring.geojson",
+#                stringsAsFactors=F)
+
+irrigation <- pid[which(pid$activity_type=="Irrigation"), ]
+
+# irrigation <- pid[which(pid$activity_type %in% c("Irrigation", "Rural Drainage and Flood Protection")), ]
+# irrigation <- irrigation[!grepl("Foul water sewer|Flood refuge mound", irrigation$activity_desc_long), ]
+
+st_write(obj=irrigation, 
+         dsn="/Users/christianbaehr/Box Sync/cambodia/eba/inputData/pid/pid_irrigation.geojson",
+         driver = "GeoJSON",
+         delete_dsn = TRUE)
+
+
+
+
+
+
 
 #########
 
