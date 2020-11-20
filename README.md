@@ -1,5 +1,5 @@
 
-## Intermediate Data and Programming for *Linking Local Infrastructure Development and Deforestation*
+### Intermediate Data and Programming for *Linking Local Infrastructure Development and Deforestation*
 #### Baehr, BenYishay, and Parks
 #### November 2020
 
